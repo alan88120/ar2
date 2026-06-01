@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <title>WebXR AR 養雞遊戲</title>
+  <!-- 引入 A-Frame 核心庫與動畫擴充庫 -->
+  <script src="https://aframe.io"></script>
+  <script src="https://jsdelivr.net"></script>
+  <style>
+    /* 畫面中央的提示文字 */
+    #instructions {
+      position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%);
+      background: rgba(0,0,0,0.7); color: white; padding: 10px 20px;
+      border-radius: 20px; font-family: sans-serif; z-index: 10; pointer-events: none;
+    }
+  </style>
+</head>
+<body>
+
+  <div id="instructions">請先將相機對準地板移動，直到出現圓圈，點擊即可餵食</div>
+
+  <!-- webxr 開啟地面偵測功能 (hit-test) -->
+  <a-scene webxr="optionalFeatures: hit-test, local-floor;" xr-mode-ui="XRMode: ar">
+    
+    <!-- 資源管理：在這裡替換成你自己的 3D 模型檔案路徑 -->
+    <a-assets>
+      <!-- 小雞模型 (此處用網路上暫時的免費模型代替，建議後續換成你自己的 .glb/.gltf 檔) -->
+      <a-asset-item id="chicken-model" src="https://github.io"></a-asset-item>
+    </a-assets>
+
+    <!-- 1. 小雞實體：初始隱藏，等到玩家點擊地面後才出生 -->
+    
+      <!-- 暫時用黃色圓錐代表小雞，可用 gltf-model="#chicken-model" 替換 -->
+      
+    
+
+    <!-- 2. 地面偵測圓圈 (Reticle) -->
+    <!-- ar-hit-test 元件會自動把這個圓圈貼在相機對準的真實地板上 -->
+    
+      <a-ring color="#00FF00" radius-inner="0.08" radius-outer="0.1" rotation="-90 0 0"></a-ring>
+    
+
+    <!-- 相機 -->
+    
+  </a-scene>
+
+  <script>
+    const scene = document.querySelector('a-scene');
+    const reticle = document.getElementById('reticle');
+    const chicken = document.getElementById('chicken');
+    const instructions = document.getElementById('instructions');
+
+    let chickenSpawned = false;
+    let isMoving = false;
+    let chickenPos = { x: 0, z: 0 };
+    let foodPos = { x: 0, z: 0 };
+    const chickenSpeed = 0.02; // 小雞走路速度
+
+    // 監聽網頁點擊（當偵測圈圈可見時，代表點到了真實地面）
+    window.addEventListener('click', () => {
+      if (reticle.getAttribute('visible') === true) {
+        // 取得目前圈圈在真實世界中的 3D 座標
+        const currentHitPosition = reticle.object3D.position;
+
+        if (!chickenSpawned) {
+          // 【第一下點擊】：孵化小雞
+          chicken.object3D.position.set(currentHitPosition.x, currentHitPosition.y, currentHitPosition.z);
+          chicken.setAttribute('visible', true);
+          chickenSpawned = true;
+          chickenPos = { x: currentHitPosition.x, z: currentHitPosition.z };
+          instructions.innerText = "小雞孵化了！再次點擊地面可以丟下飼料";
+        } else {
+          // 【後續點擊】：在點擊位置產生「數位飼料」
+          spawnFood(currentHitPosition.x, currentHitPosition.y, currentHitPosition.z);
+        }
+      }
+    });
+
+    // 動態生成飼料的函式
+    function spawnFood(x, y, z) {
+      // 如果上一顆飼料還沒吃完，先不重複餵
+      if (isMoving) return; 
+
+      const food = document.createElement('a-entity');
+      food.setAttribute('id', 'active-food');
+      food.setAttribute('geometry', 'primitive: sphere; radius: 0.04');
+      food.setAttribute('material', 'color: #8B4513'); // 咖啡色飼料
+      food.object3D.position.set(x, y, z);
+      scene.appendChild(food);
+
+      // 設定目標位置，讓小雞準備走過去
+      foodPos = { x: x, z: z };
+      isMoving = true;
+      instructions.innerText = "小雞發現飼料了，正在走過去...";
+    }
+
+    // 遊戲主要運行迴圈 (每影格執行)：計算小雞尋路與移動
+    scene.addEventListener('renderstart', () => {
+      rendererLoop();
+    });
+
+    function rendererLoop() {
+      requestAnimationFrame(rendererLoop);
+
+      if (isMoving && chickenSpawned) {
+        // 計算小雞與飼料的 X 和 Z 軸距離
+        let dx = foodPos.x - chickenPos.x;
+        let dz = foodPos.z - chickenPos.z;
+        let distance = Math.sqrt(dx * dx + dz * dz);
+
+        // 讓小雞旋轉面向飼料
+        let angle = Math.atan2(dx, dz);
+        chicken.object3D.rotation.y = angle;
+
+        if (distance > 0.05) {
+          // 朝著飼料方向移動一步
+          chickenPos.x += (dx / distance) * chickenSpeed;
+          chickenPos.z += (dz / distance) * chickenSpeed;
+          chicken.object3D.position.x = chickenPos.x;
+          chicken.object3D.position.z = chickenPos.z;
+        } else {
+          // 抵達飼料位置，小雞吃掉飼料
+          isMoving = false;
+          instructions.innerText = "嘰嘰嘰！小雞把飼料吃掉了！";
+          
+          // 移除畫面上的飼料
+          const activeFood = document.getElementById('active-food');
+          if (activeFood) activeFood.parentNode.removeChild(activeFood);
+        }
+      }
+    }
+  </script>
+</body>
+</html>
